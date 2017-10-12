@@ -58,3 +58,23 @@ Note: I do not own the copyright to these images.
 ### Further Information
 Please refer to the paper for more information, or contact me (email address in the paper).
 
+
+pygame not freetype in ubuntu16.04
+
+```
+sudo pip install freetype
+sudo pip install pygame
+sudo pip uninstall pygame
+sudo apt-get install sdl
+sudo apt-get install libsdl1.2-dev
+sudo apt-get install sdl_image sdl_mixer sdl_ttf
+sudo apt-get install libsdl-image1.2-dev
+sudo apt-get install libsdl-mixer1.2-dev
+sudo apt-get install libsdl1.2debian
+sudo pip install pygame
+sudo pip install wget
+```
+
+ps: at the begining, I uninstall pygame and what to install sdl from source, but then I found it is quite annoyed, so I simply pip install pygame, it works
+
+
