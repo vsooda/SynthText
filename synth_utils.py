@@ -1,5 +1,5 @@
 from __future__ import division
-import numpy as np 
+import numpy as np
 from ransac import fit_plane_ransac
 from sys import modules
 import matplotlib.pyplot as plt
@@ -83,13 +83,13 @@ def implicit_plot(expr, ext_grid, Nx=11, Ny=11, Nz=11,
                  col_isurf=(50/255, 199/255, 152/255)):
     """
     Function to plot algebraic surfaces described by implicit equations in Mayavi
- 
+
     Implicit functions are functions of the form
- 
+
         `F(x,y,z) = c`
- 
+
     where `c` is an arbitrary constant.
- 
+
     Parameters
     ----------
     expr : string
@@ -152,7 +152,7 @@ def isplanar(xyz,sample_neighbors,dist_thresh,num_inliers,z_proj):
     plane_info =  fit_plane_ransac(xyz,neighbors=sample_neighbors,
                             z_pos=dv,dist_inlier=dist_thresh,
                             min_inlier_frac=frac_inliers,nsample=20,
-                            max_iter=max_iter) 
+                            max_iter=max_iter)
     if plane_info != None:
         coeff, inliers = plane_info
         coeff = ensure_proj_z(coeff, z_proj)
@@ -182,7 +182,7 @@ class DepthCamera(object):
         n = ij.shape[0]
         ij = ij.astype('float')
         xy_ray = (ij-center[None,:]) / DepthCamera.f
-        z = -plane[2]/(xy_ray.dot(plane[:2])+plane[3])
+        z = -plane[3]/(xy_ray.dot(plane[:2])+plane[2])
         xyz = np.c_[xy_ray, np.ones(n)] * z[:,None]
         return xyz
 
@@ -220,7 +220,7 @@ def get_texture_score(img,masks,labels):
     img = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
     img = cv2.equalizeHist(img)
     img = img.astype('float32')/255.0
-    img = sim.filters.gaussian_filter(img,sigma=1)  
+    img = sim.filters.gaussian_filter(img,sigma=1)
     G = np.clip(np.abs(sim.filters.laplace(img)),0,1)
 
     tex_score = []

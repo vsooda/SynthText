@@ -24,7 +24,7 @@ import wget, tarfile
 ## Define some configuration variables:
 NUM_IMG = -1 # no. of images to use for generation (-1 to use all available):
 INSTANCE_PER_IMAGE = 1 # no. of times to use the same image
-SECS_PER_IMG = 5 #max time per image in seconds
+SECS_PER_IMG = 100 #max time per image in seconds
 
 # path to the data-file, containing image, depth and segmentation:
 DATA_PATH = 'data'
@@ -69,8 +69,8 @@ def add_res_to_db(imgname,res,db):
     dname = "%s_%d"%(imgname, i)
     db['data'].create_dataset(dname,data=res[i]['img'])
     db['data'][dname].attrs['charBB'] = res[i]['charBB']
-    db['data'][dname].attrs['wordBB'] = res[i]['wordBB']        
-    db['data'][dname].attrs['txt'] = res[i]['txt']
+    db['data'][dname].attrs['wordBB'] = res[i]['wordBB']
+    db['data'][dname].attrs['txt'] =  [a.encode('utf8') for a in res[i]['txt']]
 
 
 def main(viz=False):

@@ -88,3 +88,6 @@ ENV/
 
 # Rope project settings
 .ropeproject
+results
+demo_image
+data
