@@ -77,4 +77,16 @@ sudo pip install wget
 
 ps: at the begining, I uninstall pygame and what to install sdl from source, but then I found it is quite annoyed, so I simply pip install pygame, it works
 
+update:
+
+In ubuntu14.04,
+
+`sudo apt-get install python-pygame` will report miss freetype. 
+
+use `sudo pip install pygame` will report miss dependency.
+
+solution: sudo apt-get install libsdl-image1.2-dev libsdl-mixer1.2-dev libsdl-ttf2.0-dev libsdl-gfx1.2-dev libsdl-net1.2-dev libsdl-sge-dev libsdl-sound1.2-dev libportmidi-dev libsmpeg-dev
+
+then `sudo pip install pygame` will be ok
+
 
