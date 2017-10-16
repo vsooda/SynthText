@@ -2,6 +2,7 @@ import codecs
 from PIL import Image
 import numpy as np
 import h5py
+import os
 import matplotlib.pyplot as plt
 
 from common import colorize, Color
@@ -10,7 +11,11 @@ db_fname = 'results/SynthText.h5'
 db = h5py.File(db_fname, 'r')
 dsets = sorted(db['data'].keys())
 count = 0
+result_img_dir = 'cut_pics/'
 print "total number of images : ", colorize(Color.RED, len(dsets), highlight=True)
+
+if not os.path.exists(result_img_dir):
+    os.makedirs(result_img_dir)
 
 with codecs.open('result.csv', 'w', encoding='utf-8') as csv:
 
@@ -94,7 +99,7 @@ with codecs.open('result.csv', 'w', encoding='utf-8') as csv:
             box = (leftx, lefty, rightx, righty)
             print 'result12 ' + str(leftx) + ', ' + str(lefty) + ', ' + str(rightx) + ', ' + str(righty)
             region = image.crop(box)
-            region.save('cut-pics/' + str(count) + '.jpg')
+            region.save(result_img_dir + str(count) + '.jpg')
             for a in txt:
                 a = a.decode('utf-8')
                 print a
