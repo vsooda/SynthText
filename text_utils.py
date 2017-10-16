@@ -103,7 +103,7 @@ class RenderFont(object):
 
         # text-source : gets english text:
         self.text_source = TextSource(min_nchar=self.min_nchar,
-                                      fn=osp.join(data_dir,'newsgroup/newsgroup.txt'))
+                                      fn=osp.join(data_dir,'newsgroup/data'))
 
         # get font-state object:
         self.font_state = FontState(data_dir)
