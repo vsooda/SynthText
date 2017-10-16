@@ -31,6 +31,7 @@ with codecs.open('result.csv', 'w', encoding='utf-8') as csv:
         image = Image.fromarray(rgb)
 
 
+        txt = [t.decode('utf-8').strip() for t in txt]
         txt_len = len(txt)
 
         for i in xrange(wordBB.shape[-1]):
@@ -79,7 +80,6 @@ with codecs.open('result.csv', 'w', encoding='utf-8') as csv:
                     if bb[1, j] > righty:
                         righty = int(round(bb[1, j]))
 
-            print 'result ' + str(leftx) + ', ' + str(lefty) + ', ' + str(rightx) + ', ' + str(righty)
 
             if leftx < 0:
                 leftx = 0
@@ -91,25 +91,18 @@ with codecs.open('result.csv', 'w', encoding='utf-8') as csv:
             if righty > height:
                 righty = int(round(height))
 
-            print 'result11 ' + str(leftx) + ', ' + str(lefty) + ', ' + str(rightx) + ', ' + str(righty)
-            print rightx
-            print righty
-
-            #
             box = (leftx, lefty, rightx, righty)
             print 'result12 ' + str(leftx) + ', ' + str(lefty) + ', ' + str(rightx) + ', ' + str(righty)
             region = image.crop(box)
             region.save(result_img_dir + str(count) + '.jpg')
-            for a in txt:
-                a = a.decode('utf-8')
-                print a
-            list = txt[m].split('\n')
-            if len(list) > 1:
+            lines = txt[m].split('\n')
+            lines = [line.strip() for line in lines]
+            if len(lines) > 1:
                 if space_count == 0:
-                    space = len(list)
+                    space = len(lines)
                 if m < txt_len - 1:
                     if space_count < space:
-                        csv.write('%s %s\n' % (str(count) + '.jpg', list[space_count].decode('utf-8')))
+                        csv.write('%s %s\n' % (str(count) + '.jpg', lines[space_count]))
                         space_count += 1
                         count += 1
                         if space_count == space:
@@ -117,7 +110,7 @@ with codecs.open('result.csv', 'w', encoding='utf-8') as csv:
                             space_count = 0
                 else:
                     if space_count < space:
-                        csv.write('%s %s\n' % (str(count) + '.jpg', list[space_count].decode('utf-8')))
+                        csv.write('%s %s\n' % (str(count) + '.jpg', lines[space_count]))
                         space_count += 1
                         count += 1
                         if space_count == space:
@@ -125,10 +118,10 @@ with codecs.open('result.csv', 'w', encoding='utf-8') as csv:
                             space_count = 0
             else:
                 if m < txt_len - 1:
-                    csv.write('%s %s\n' % (str(count) + '.jpg', txt[m].decode('utf-8')))
+                    csv.write('%s %s\n' % (str(count) + '.jpg', txt[m]))
                     m += 1
                 elif m == txt_len - 1:
-                    csv.write('%s %s\n' % (str(count) + '.jpg', txt[m].decode('utf-8')))
+                    csv.write('%s %s\n' % (str(count) + '.jpg', txt[m]))
                     m = 0
                 count += 1
 
