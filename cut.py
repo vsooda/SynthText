@@ -92,8 +92,11 @@ with codecs.open('result.csv', 'w', encoding='utf-8') as csv:
                 righty = int(round(height))
 
             box = (leftx, lefty, rightx, righty)
+
+            save_index = '%07d.jpg' % count
+            print 'result12 ' + str(leftx) + ', ' + str(lefty) + ', ' + str(rightx) + ', ' + str(righty)
             region = image.crop(box)
-            region.save(result_img_dir + str(count) + '.jpg')
+            region.save(result_img_dir + save_index)
             lines = txt[m].split('\n')
             lines = [line.strip() for line in lines]
             if len(lines) > 1:
@@ -101,7 +104,7 @@ with codecs.open('result.csv', 'w', encoding='utf-8') as csv:
                     space = len(lines)
                 if m < txt_len - 1:
                     if space_count < space:
-                        csv.write('%s %s\n' % (str(count) + '.jpg', lines[space_count]))
+                        csv.write('%s %s\n' % (save_index , lines[space_count]))
                         space_count += 1
                         count += 1
                         if space_count == space:
@@ -109,7 +112,7 @@ with codecs.open('result.csv', 'w', encoding='utf-8') as csv:
                             space_count = 0
                 else:
                     if space_count < space:
-                        csv.write('%s %s\n' % (str(count) + '.jpg', lines[space_count]))
+                        csv.write('%s %s\n' % (save_index, lines[space_count]))
                         space_count += 1
                         count += 1
                         if space_count == space:
@@ -117,10 +120,10 @@ with codecs.open('result.csv', 'w', encoding='utf-8') as csv:
                             space_count = 0
             else:
                 if m < txt_len - 1:
-                    csv.write('%s %s\n' % (str(count) + '.jpg', txt[m]))
+                    csv.write('%s %s\n' % (save_index, txt[m]))
                     m += 1
                 elif m == txt_len - 1:
-                    csv.write('%s %s\n' % (str(count) + '.jpg', txt[m]))
+                    csv.write('%s %s\n' % (save_index, txt[m]))
                     m = 0
                 count += 1
 
