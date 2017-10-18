@@ -1,3 +1,4 @@
+#coding=utf-8
 from __future__ import division
 import numpy as np
 import matplotlib.pyplot as plt
@@ -11,6 +12,7 @@ import scipy.stats as sstat
 import pygame, pygame.locals
 from pygame import freetype
 import codecs
+import keys
 #import Image
 from PIL import Image
 import math
@@ -102,8 +104,9 @@ class RenderFont(object):
         self.baselinestate = BaselineState()
 
         # text-source : gets english text:
-        self.text_source = TextSource(min_nchar=self.min_nchar,
-                                      fn=osp.join(data_dir,'newsgroup/data'))
+        #text_source_dir = osp.join(data_dir, 'newsgroup/data')
+        text_source_dir = "/home/sooda/data/ocr/text/"
+        self.text_source = TextSource(min_nchar=self.min_nchar,fn=text_source_dir)
 
         # get font-state object:
         self.font_state = FontState(data_dir)
@@ -509,13 +512,40 @@ class TextSource(object):
         """
         TXT_FN : path to file containing text data.
         """
+        alphabet = keys.alphabet
+        self.dict = {}
+        for i, char in enumerate(alphabet):
+            self.dict[char] = i + 1
         self.min_nchar = min_nchar
         self.fdict = {'WORD':self.sample_word,
                       'LINE':self.sample_line,
                       'PARA':self.sample_para}
 
-        with codecs.open(fn,'r', encoding = 'utf-8') as f:
-            self.txt = [l.strip() for l in f.readlines()]
+        files= os.listdir(fn)
+        files=files[0:-1]
+        #print files
+        random.shuffle(files)
+        self.txt = []
+        for filename in files:
+            print filename
+            filename = fn + "/" + filename
+            #if len(self.txt) > 1000000:
+            #    break
+            #with codecs.open(filename,'r', encoding = 'utf-8') as f:
+            with open(filename, 'r') as f:
+                lines = f.readlines()
+                for l in lines:
+                    try:
+                        line=l.decode('utf-8').strip()
+                        for w in line:
+                            index = self.dict[w]
+                        self.txt.append(line)
+                    except:
+                        os.remove(filename)
+                        print "remove ", filename
+                        break
+
+        random.shuffle(self.txt)
 
         # distribution over line/words for LINE/PARA:
         self.p_line_nline = np.array([0.85, 0.10, 0.05])

@@ -1,3 +1,4 @@
+#coding=utf-8
 # Author: Ankush Gupta
 # Date: 2015
 
@@ -625,73 +626,69 @@ class RendererV3(object):
             return []
 
         res = []
-        count = 0
-        max_iter = 20
-        while count < max_iter:
-            count += 1
-            for i in xrange(ninstance):
-                place_masks = copy.deepcopy(regions['place_mask'])
+        for i in xrange(ninstance):
+            place_masks = copy.deepcopy(regions['place_mask'])
 
-                print colorize(Color.CYAN, " ** instance # %d : %d" % (count,i))
+            print colorize(Color.CYAN, " ** instance #: %d" % i)
 
-                idict = {'img': [], 'charBB': None, 'wordBB': None, 'txt': None}
+            idict = {'img': [], 'charBB': None, 'wordBB': None, 'txt': None}
 
-                m = self.get_num_text_regions(
-                    nregions)  # np.arange(nregions)#min(nregions, 5*ninstance*self.max_text_regions))
-                reg_idx = np.arange(min(2 * m, nregions))
-                np.random.shuffle(reg_idx)
-                reg_idx = reg_idx[:m]
+            m = self.get_num_text_regions(
+                nregions)  # np.arange(nregions)#min(nregions, 5*ninstance*self.max_text_regions))
+            reg_idx = np.arange(min(2 * m, nregions))
+            np.random.shuffle(reg_idx)
+            reg_idx = reg_idx[:m]
 
-                placed = False
-                img = rgb.copy()
-                itext = []
-                ibb = []
+            placed = False
+            img = rgb.copy()
+            itext = []
+            ibb = []
 
-                # process regions:
-                num_txt_regions = len(reg_idx)
-                NUM_REP = 5  # re-use each region three times:
-                reg_range = np.arange(NUM_REP * num_txt_regions) % num_txt_regions
-                for idx in reg_range:
-                    ireg = reg_idx[idx]
-                    try:
-                        if self.max_time is None:
+            # process regions:
+            num_txt_regions = len(reg_idx)
+            NUM_REP = 5  # re-use each region three times:
+            reg_range = np.arange(NUM_REP * num_txt_regions) % num_txt_regions
+            for idx in reg_range:
+                ireg = reg_idx[idx]
+                try:
+                    if self.max_time is None:
+                        txt_render_res = self.place_text(img, place_masks[ireg],
+                                                         regions['homography'][ireg],
+                                                         regions['homography_inv'][ireg])
+                    else:
+                        with time_limit(self.max_time):
                             txt_render_res = self.place_text(img, place_masks[ireg],
                                                              regions['homography'][ireg],
                                                              regions['homography_inv'][ireg])
-                        else:
-                            with time_limit(self.max_time):
-                                txt_render_res = self.place_text(img, place_masks[ireg],
-                                                                 regions['homography'][ireg],
-                                                                 regions['homography_inv'][ireg])
-                    except TimeoutException, msg:
-                        print msg
-                        continue
-                    except:
-                        traceback.print_exc()
-                        # some error in placing text on the region
-                        continue
+                except TimeoutException, msg:
+                    print msg
+                    continue
+                except:
+                    traceback.print_exc()
+                    # some error in placing text on the region
+                    continue
 
-                    if txt_render_res is not None:
-                        placed = True
-                        img, text, bb, collision_mask = txt_render_res
-                        # update the region collision mask:
-                        place_masks[ireg] = collision_mask
-                        # store the result:
-                        itext.append(text)
-                        ibb.append(bb)
+                if txt_render_res is not None:
+                    placed = True
+                    img, text, bb, collision_mask = txt_render_res
+                    # update the region collision mask:
+                    place_masks[ireg] = collision_mask
+                    # store the result:
+                    itext.append(text)
+                    ibb.append(bb)
 
-                if placed:
-                    # at least 1 word was placed in this instance:
-                    idict['img'] = img
-                    idict['txt'] = itext
-                    idict['charBB'] = np.concatenate(ibb, axis=2)
-                    idict['wordBB'] = self.char2wordBB(idict['charBB'].copy(), ' '.join(itext))
-                    res.append(idict.copy())
-                    if viz:
-                        viz_textbb(1, img, [idict['wordBB']], alpha=1.0)
-                        viz_masks(2, img, seg, depth, regions['label'])
-                        # viz_regions(rgb.copy(),xyz,seg,regions['coeff'],regions['label'])
-                        if i < ninstance - 1:
-                            raw_input(colorize(Color.BLUE, 'continue?', True))
+            if placed:
+                # at least 1 word was placed in this instance:
+                idict['img'] = img
+                idict['txt'] = itext
+                idict['charBB'] = np.concatenate(ibb, axis=2)
+                idict['wordBB'] = self.char2wordBB(idict['charBB'].copy(), ' '.join(itext))
+                res.append(idict.copy())
+                if viz:
+                    viz_textbb(1, img, [idict['wordBB']], alpha=1.0)
+                    viz_masks(2, img, seg, depth, regions['label'])
+                    # viz_regions(rgb.copy(),xyz,seg,regions['coeff'],regions['label'])
+                    if i < ninstance - 1:
+                        raw_input(colorize(Color.BLUE, 'continue?', True))
 
         return res

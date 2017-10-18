@@ -92,7 +92,6 @@ with codecs.open('result.csv', 'w', encoding='utf-8') as csv:
                 righty = int(round(height))
 
             box = (leftx, lefty, rightx, righty)
-            print 'result12 ' + str(leftx) + ', ' + str(lefty) + ', ' + str(rightx) + ', ' + str(righty)
             region = image.crop(box)
             region.save(result_img_dir + str(count) + '.jpg')
             lines = txt[m].split('\n')

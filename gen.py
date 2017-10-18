@@ -1,3 +1,4 @@
+#coding=utf-8
 # Author: Ankush Gupta
 # Date: 2015
 
@@ -19,6 +20,7 @@ import os.path as osp
 from synthgen import *
 from common import *
 import wget, tarfile
+import codecs
 
 
 ## Define some configuration variables:
@@ -28,7 +30,8 @@ SECS_PER_IMG = 100 #max time per image in seconds
 
 # path to the data-file, containing image, depth and segmentation:
 DATA_PATH = 'data'
-DB_FNAME = osp.join(DATA_PATH,'dset.h5')
+bg_data = '/home/sooda/data/ocr/SynthTextBg/'
+DB_FNAME = osp.join(bg_data,'dset.h5')
 # url of the data (google-drive public file):
 DATA_URL = 'http://www.robots.ox.ac.uk/~ankush/data.tar.gz'
 OUT_FILE = 'results/SynthText.h5'
@@ -59,6 +62,100 @@ def get_data():
   return h5py.File(DB_FNAME,'r')
 
 
+def save_cut_pics(imgname, res, result_img_dir, count, label_file):
+    with codecs.open(label_file, 'a', encoding='utf-8') as csv:
+        ninstance = len(res)
+        for k in xrange(ninstance):
+            m = 0
+            space = 0
+            space_count = 0
+            rgb = res[k]['img']
+            charBB = res[k]['charBB']
+            wordBB = res[k]['wordBB']
+            txt = res[k]['txt']
+            image = Image.fromarray(rgb)
+
+            txt = [t.decode('utf-8').strip() for t in txt]
+            txt_len = len(txt)
+
+            for i in xrange(wordBB.shape[-1]):
+                bb = wordBB[:, :, i]
+                bb = np.c_[bb, bb[:, 0]]
+
+                leftx = 1000
+                lefty = 1000
+                rightx = -1000
+                righty = -1000
+
+                for j in xrange(4):
+                    if j == 0:
+                        if bb[0, j] < leftx:
+                            leftx = int(round(bb[0, j]))
+                        if bb[1, j] < lefty:
+                            lefty = int(round(bb[1, j]))
+                    if j == 1:
+                        if bb[0, j] > rightx:
+                            rightx = int(round(bb[0, j]))
+                        if bb[1, j] < lefty:
+                            lefty = int(round(bb[1, j]))
+                    if j == 2:
+                        if bb[0, j] > rightx:
+                            rightx = int(round(bb[0, j]))
+                        if bb[1, j] > righty:
+                            righty = int(round(bb[1, j]))
+                    if j == 3:
+                        if bb[0, j] < leftx:
+                            leftx = int(round(bb[0, j]))
+                        if bb[1, j] > righty:
+                            righty = int(round(bb[1, j]))
+
+                if leftx < 0:
+                    leftx = 0
+                if lefty < 0:
+                    lefty = 0
+                width, height = image.size
+                if rightx > width:
+                    rightx = int(round(width))
+                if righty > height:
+                    righty = int(round(height))
+
+                box = (leftx, lefty, rightx, righty)
+                region = image.crop(box)
+                region.save(result_img_dir + str(count) + '.jpg')
+
+                lines = txt[m].split('\n')
+                lines = [line.strip() for line in lines]
+                if len(lines) > 1:
+                    if space_count == 0:
+                        space = len(lines)
+                    if m < txt_len - 1:
+                        if space_count < space:
+                            csv.write('%s %s\n' % (str(count) + '.jpg', lines[space_count]))
+                            space_count += 1
+                            count += 1
+                            if space_count == space:
+                                m += 1
+                                space_count = 0
+                    else:
+                        if space_count < space:
+                            csv.write('%s %s\n' % (str(count) + '.jpg', lines[space_count]))
+                            space_count += 1
+                            count += 1
+                            if space_count == space:
+                                m = 0
+                                space_count = 0
+                else:
+                    if m < txt_len - 1:
+                        csv.write('%s %s\n' % (str(count) + '.jpg', txt[m]))
+                        m += 1
+                    elif m == txt_len - 1:
+                        csv.write('%s %s\n' % (str(count) + '.jpg', txt[m]))
+                        m = 0
+                    count += 1
+    return count
+
+
+
 def add_res_to_db(imgname,res,db):
   """
   Add the synthetically generated text image instance
@@ -83,6 +180,11 @@ def main(viz=False):
   out_db = h5py.File(OUT_FILE,'w')
   out_db.create_group('/data')
   print colorize(Color.GREEN,'Storing the output in: '+OUT_FILE, bold=True)
+  index = 20000
+  label_file = 'result.txt'
+  result_img_dir = 'cut_pics/'
+  if not os.path.exists(result_img_dir):
+      os.makedirs(result_img_dir)
 
   # get the names of the image files in the dataset:
   imnames = sorted(db['image'].keys())
@@ -95,6 +197,7 @@ def main(viz=False):
   RV3 = RendererV3(DATA_PATH,max_time=SECS_PER_IMG)
   for i in xrange(start_idx,end_idx):
     imname = imnames[i]
+    print imname
     try:
       # get the image:
       img = Image.fromarray(db['image'][imname][:])
@@ -120,6 +223,7 @@ def main(viz=False):
       if len(res) > 0:
         # non-empty : successful in placing text:
         add_res_to_db(imname,res,out_db)
+        #index = save_cut_pics(imname,res, result_img_dir, index, label_file)
       # visualize the output:
       if viz:
         if 'q' in raw_input(colorize(Color.RED,'continue? (enter to continue, q to exit): ',True)):
