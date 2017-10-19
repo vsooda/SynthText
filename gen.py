@@ -28,13 +28,13 @@ import multiprocessing
 
 ## Define some configuration variables:
 NUM_IMG = -1 # no. of images to use for generation (-1 to use all available):
-INSTANCE_PER_IMAGE = 1 # no. of times to use the same image
+INSTANCE_PER_IMAGE = 5 # no. of times to use the same image
 SECS_PER_IMG = 100 #max time per image in seconds
 
 # path to the data-file, containing image, depth and segmentation:
 DATA_PATH = 'data'
 bg_data = '/home/sooda/data/ocr/SynthTextBg/'
-bg_data = DATA_PATH
+#bg_data = DATA_PATH
 DB_FNAME = osp.join(bg_data,'dset.h5')
 # url of the data (google-drive public file):
 DATA_URL = 'http://www.robots.ox.ac.uk/~ankush/data.tar.gz'
@@ -216,7 +216,7 @@ class Synthesizer(object):
         start_idx, end_idx = 0,min(NUM_IMG, N)
         print start_idx, end_idx
         img_num = end_idx - start_idx
-        thread_num = min(4,img_num)
+        thread_num = min(8,img_num)
 
         self.RV3 = RendererV3(DATA_PATH,max_time=SECS_PER_IMG)
         self.queueLock = multiprocessing.Lock()
@@ -242,7 +242,8 @@ class Synthesizer(object):
         print imname
         try:
             # get the image:
-            db = self.db
+            #db = self.db
+            db = h5py.File(DB_FNAME,'r')
             img = Image.fromarray(db['image'][imname][:])
             # get the pre-computed depth:
             #  there are 2 estimates of depth (represented as 2 "channels")
@@ -268,10 +269,12 @@ class Synthesizer(object):
                 save_cut_pics(imname, res, self.result_img_dir, self.label_file_dir)
             else:
                 print 'not res', imname
+            db.close()
         except:
             traceback.print_exc()
             print colorize(Color.GREEN,'>>>> CONTINUING....', bold=True)
             print 'not ok', imname
+            db.close()
 
 
 
