@@ -21,6 +21,9 @@ from synthgen import *
 from common import *
 import wget, tarfile
 import codecs
+import Queue
+import multiprocessing
+
 
 
 ## Define some configuration variables:
@@ -31,6 +34,7 @@ SECS_PER_IMG = 100 #max time per image in seconds
 # path to the data-file, containing image, depth and segmentation:
 DATA_PATH = 'data'
 bg_data = '/home/sooda/data/ocr/SynthTextBg/'
+bg_data = DATA_PATH
 DB_FNAME = osp.join(bg_data,'dset.h5')
 # url of the data (google-drive public file):
 DATA_URL = 'http://www.robots.ox.ac.uk/~ankush/data.tar.gz'
@@ -58,12 +62,13 @@ def get_data():
       print colorize(Color.RED,'Data not found and have problems downloading.',bold=True)
       sys.stdout.flush()
       sys.exit(-1)
-  # open the h5 file and return:
-  return h5py.File(DB_FNAME,'r')
 
-
-def save_cut_pics(imgname, res, result_img_dir, count, label_file):
-    with codecs.open(label_file, 'a', encoding='utf-8') as csv:
+def save_cut_pics(imgname, res, result_img_dir, label_file_dir):
+    basename = os.path.splitext(os.path.basename(imgname))[0]
+    label_file = label_file_dir + basename + ".txt"
+    print label_file
+    count = 0
+    with codecs.open(label_file, 'w', encoding='utf-8') as csv:
         ninstance = len(res)
         for k in xrange(ninstance):
             m = 0
@@ -120,6 +125,7 @@ def save_cut_pics(imgname, res, result_img_dir, count, label_file):
                     righty = int(round(height))
 
                 box = (leftx, lefty, rightx, righty)
+                save_index = '%s_%07d.jpg' % (basename, count)
                 region = image.crop(box)
                 region.save(result_img_dir + str(count) + '.jpg')
 
@@ -130,7 +136,7 @@ def save_cut_pics(imgname, res, result_img_dir, count, label_file):
                         space = len(lines)
                     if m < txt_len - 1:
                         if space_count < space:
-                            csv.write('%s %s\n' % (str(count) + '.jpg', lines[space_count]))
+                            csv.write('%s %s\n' % (save_index , lines[space_count]))
                             space_count += 1
                             count += 1
                             if space_count == space:
@@ -138,7 +144,7 @@ def save_cut_pics(imgname, res, result_img_dir, count, label_file):
                                 space_count = 0
                     else:
                         if space_count < space:
-                            csv.write('%s %s\n' % (str(count) + '.jpg', lines[space_count]))
+                            csv.write('%s %s\n' % (save_index , lines[space_count]))
                             space_count += 1
                             count += 1
                             if space_count == space:
@@ -146,10 +152,10 @@ def save_cut_pics(imgname, res, result_img_dir, count, label_file):
                                 space_count = 0
                 else:
                     if m < txt_len - 1:
-                        csv.write('%s %s\n' % (str(count) + '.jpg', txt[m]))
+                        csv.write('%s %s\n' % (save_index, txt[m]))
                         m += 1
                     elif m == txt_len - 1:
-                        csv.write('%s %s\n' % (str(count) + '.jpg', txt[m]))
+                        csv.write('%s %s\n' % (save_index, txt[m]))
                         m = 0
                     count += 1
     return count
@@ -170,71 +176,109 @@ def add_res_to_db(imgname,res,db):
     db['data'][dname].attrs['txt'] =  [a.encode('utf8') for a in res[i]['txt']]
 
 
+class Synthesizer(object):
+    def __init__(self):
+        self.queueLock = None
+        self.workQueue = None
+
+    def synth_worker(self):
+        while True:
+            self.queueLock.acquire()
+            if not self.workQueue.empty():
+                index = self.workQueue.get()
+                self.queueLock.release()
+                self.do_synth(index)
+            else:
+                self.queueLock.release()
+                break
+
+
+    def synth_data(self):
+        self.db = h5py.File(DB_FNAME,'r')
+        self.out_db = h5py.File(OUT_FILE,'w')
+        self.out_db.create_group('/data')
+        print colorize(Color.GREEN,'Storing the output in: '+OUT_FILE, bold=True)
+
+
+        self.result_img_dir = 'cut_pics/'
+        self.label_file_dir = 'labels/'
+        if not os.path.exists(self.result_img_dir):
+            os.makedirs(self.result_img_dir)
+        if not os.path.exists(self.label_file_dir):
+            os.makedirs(self.label_file_dir)
+
+        self.imnames = sorted(self.db['image'].keys())
+        N = len(self.imnames)
+        global NUM_IMG
+        if NUM_IMG < 0:
+            NUM_IMG = N
+        start_idx, end_idx = 0,min(NUM_IMG, N)
+        thread_num = 4
+
+        self.RV3 = RendererV3(DATA_PATH,max_time=SECS_PER_IMG)
+        self.queueLock = multiprocessing.Lock()
+        self.workQueue = multiprocessing.Queue(end_idx-start_idx+1)
+        self.threads = [multiprocessing.Process(target=self.synth_worker) for i in range(thread_num)]
+        for i in xrange(start_idx, end_idx):
+            print colorize(Color.RED,'%d of %d'%(i,end_idx-1), bold=True)
+            self.queueLock.acquire()
+            self.workQueue.put(i)
+            self.queueLock.release()
+
+        for thread in self.threads:
+            thread.daemon = True
+            thread.start()
+        while not self.workQueue.empty():
+            pass
+        for t in self.threads:
+            t.join(timeout=None)
+        self.out_db.close()
+        self.db.close()
+
+    def do_synth(self, i):
+        imname = self.imnames[i]
+        print imname
+        try:
+            # get the image:
+            db = self.db
+            img = Image.fromarray(db['image'][imname][:])
+            # get the pre-computed depth:
+            #  there are 2 estimates of depth (represented as 2 "channels")
+            #  here we are using the second one (in some cases it might be
+            #  useful to use the other one):
+            depth = db['depth'][imname][:].T
+            depth = depth[:,:,1]
+            # get segmentation:
+            seg = db['seg'][imname][:].astype('float32')
+            area = db['seg'][imname].attrs['area']
+            label = db['seg'][imname].attrs['label']
+
+            # re-size uniformly:
+            sz = depth.shape[:2][::-1]
+            img = np.array(img.resize(sz,Image.ANTIALIAS))
+            seg = np.array(Image.fromarray(seg).resize(sz,Image.NEAREST))
+
+            res = self.RV3.render_text(img,depth,seg,area,label,
+                        ninstance=INSTANCE_PER_IMAGE)
+            if len(res) > 0:
+                # non-empty : successful in placing text:
+                #add_res_to_db(imname, res, self.out_db)
+                save_cut_pics(imname, res, self.result_img_dir, self.label_file_dir)
+            else:
+                print 'not res', imname
+        except:
+            traceback.print_exc()
+            print colorize(Color.GREEN,'>>>> CONTINUING....', bold=True)
+            print 'not ok', imname
+
+
+
 def main(viz=False):
   # open databases:
   print colorize(Color.BLUE,'getting data..',bold=True)
-  db = get_data()
-  print colorize(Color.BLUE,'\t-> done',bold=True)
-
-  # open the output h5 file:
-  out_db = h5py.File(OUT_FILE,'w')
-  out_db.create_group('/data')
-  print colorize(Color.GREEN,'Storing the output in: '+OUT_FILE, bold=True)
-  index = 20000
-  label_file = 'result.txt'
-  result_img_dir = 'cut_pics/'
-  if not os.path.exists(result_img_dir):
-      os.makedirs(result_img_dir)
-
-  # get the names of the image files in the dataset:
-  imnames = sorted(db['image'].keys())
-  N = len(imnames)
-  global NUM_IMG
-  if NUM_IMG < 0:
-    NUM_IMG = N
-  start_idx,end_idx = 0,min(NUM_IMG, N)
-
-  RV3 = RendererV3(DATA_PATH,max_time=SECS_PER_IMG)
-  for i in xrange(start_idx,end_idx):
-    imname = imnames[i]
-    print imname
-    try:
-      # get the image:
-      img = Image.fromarray(db['image'][imname][:])
-      # get the pre-computed depth:
-      #  there are 2 estimates of depth (represented as 2 "channels")
-      #  here we are using the second one (in some cases it might be
-      #  useful to use the other one):
-      depth = db['depth'][imname][:].T
-      depth = depth[:,:,1]
-      # get segmentation:
-      seg = db['seg'][imname][:].astype('float32')
-      area = db['seg'][imname].attrs['area']
-      label = db['seg'][imname].attrs['label']
-
-      # re-size uniformly:
-      sz = depth.shape[:2][::-1]
-      img = np.array(img.resize(sz,Image.ANTIALIAS))
-      seg = np.array(Image.fromarray(seg).resize(sz,Image.NEAREST))
-
-      print colorize(Color.RED,'%d of %d'%(i,end_idx-1), bold=True)
-      res = RV3.render_text(img,depth,seg,area,label,
-                            ninstance=INSTANCE_PER_IMAGE,viz=viz)
-      if len(res) > 0:
-        # non-empty : successful in placing text:
-        add_res_to_db(imname,res,out_db)
-        #index = save_cut_pics(imname,res, result_img_dir, index, label_file)
-      # visualize the output:
-      if viz:
-        if 'q' in raw_input(colorize(Color.RED,'continue? (enter to continue, q to exit): ',True)):
-          break
-    except:
-      traceback.print_exc()
-      print colorize(Color.GREEN,'>>>> CONTINUING....', bold=True)
-      continue
-  db.close()
-  out_db.close()
-
+  get_data()
+  synthesizer = Synthesizer()
+  synthesizer.synth_data()
 
 if __name__=='__main__':
   import argparse
