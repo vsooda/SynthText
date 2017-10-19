@@ -454,9 +454,13 @@ class RendererV3(object):
         text = ''.join(text.split())
         assert len(text)==bb.shape[-1]
 
-        alnum = np.array([ch.isalnum() for ch in text])
+        alnum = np.array([ch.isalnum() for ch in text]) #过滤出字母数字
         hw0 = hw0[alnum,:]
         hw = hw[alnum,:]
+
+        if hw0.size == 0 or hw.size == 0:
+            print text
+            return False
 
         min_h0, min_h = np.min(hw0[:,0]), np.min(hw[:,0])
         asp0, asp = hw0[:,0]/hw0[:,1], hw[:,0]/hw[:,1]
