@@ -127,7 +127,7 @@ def save_cut_pics(imgname, res, result_img_dir, label_file_dir):
                 box = (leftx, lefty, rightx, righty)
                 save_index = '%s_%07d.jpg' % (basename, count)
                 region = image.crop(box)
-                region.save(result_img_dir + str(count) + '.jpg')
+                region.save(result_img_dir + save_index)
 
                 lines = txt[m].split('\n')
                 lines = [line.strip() for line in lines]
@@ -186,6 +186,7 @@ class Synthesizer(object):
             self.queueLock.acquire()
             if not self.workQueue.empty():
                 index = self.workQueue.get()
+                print colorize(Color.RED,'%d'%index, bold=True)
                 self.queueLock.release()
                 self.do_synth(index)
             else:
@@ -213,14 +214,15 @@ class Synthesizer(object):
         if NUM_IMG < 0:
             NUM_IMG = N
         start_idx, end_idx = 0,min(NUM_IMG, N)
-        thread_num = 4
+        print start_idx, end_idx
+        img_num = end_idx - start_idx
+        thread_num = min(4,img_num)
 
         self.RV3 = RendererV3(DATA_PATH,max_time=SECS_PER_IMG)
         self.queueLock = multiprocessing.Lock()
-        self.workQueue = multiprocessing.Queue(end_idx-start_idx+1)
+        self.workQueue = multiprocessing.Queue(img_num)
         self.threads = [multiprocessing.Process(target=self.synth_worker) for i in range(thread_num)]
         for i in xrange(start_idx, end_idx):
-            print colorize(Color.RED,'%d of %d'%(i,end_idx-1), bold=True)
             self.queueLock.acquire()
             self.workQueue.put(i)
             self.queueLock.release()
