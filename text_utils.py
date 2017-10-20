@@ -17,6 +17,7 @@ import keys
 from PIL import Image
 import math
 from common import *
+import gen
 
 
 def sample_weighted(p_dict):
@@ -470,8 +471,10 @@ class FontState(object):
         """
         Samples from the font state distribution
         """
+        FONT_ID = gen.FONT_ID
         return {
-            'font': self.fonts[int(np.random.randint(0, len(self.fonts)))],
+            #'font': self.fonts[int(np.random.randint(0, len(self.fonts)))],
+            'font': self.fonts[FONT_ID],
             'size': self.size[1]*np.random.randn() + self.size[0],
             'underline': np.random.rand() < self.underline,
             'underline_adjustment': max(2.0, min(-2.0, self.underline_adjustment[1]*np.random.randn() + self.underline_adjustment[0])),

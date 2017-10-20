@@ -28,17 +28,18 @@ import multiprocessing
 
 ## Define some configuration variables:
 NUM_IMG = -1 # no. of images to use for generation (-1 to use all available):
-INSTANCE_PER_IMAGE = 5 # no. of times to use the same image
+INSTANCE_PER_IMAGE = 1 # no. of times to use the same image
 SECS_PER_IMG = 100 #max time per image in seconds
 
 # path to the data-file, containing image, depth and segmentation:
 DATA_PATH = 'data'
 bg_data = '/home/sooda/data/ocr/SynthTextBg/'
-#bg_data = DATA_PATH
+bg_data = DATA_PATH
 DB_FNAME = osp.join(bg_data,'dset.h5')
 # url of the data (google-drive public file):
 DATA_URL = 'http://www.robots.ox.ac.uk/~ankush/data.tar.gz'
 OUT_FILE = 'results/SynthText.h5'
+FONT_ID = 0
 
 def get_data():
   """
@@ -195,47 +196,50 @@ class Synthesizer(object):
 
 
     def synth_data(self):
-        self.db = h5py.File(DB_FNAME,'r')
-        self.out_db = h5py.File(OUT_FILE,'w')
-        self.out_db.create_group('/data')
-        print colorize(Color.GREEN,'Storing the output in: '+OUT_FILE, bold=True)
+        for FONT_ID  in xrange(50):
+            self.db = h5py.File(DB_FNAME,'r')
+            self.out_db = h5py.File(OUT_FILE,'w')
+            self.out_db.create_group('/data')
+            print colorize(Color.GREEN,'Storing the output in: '+OUT_FILE, bold=True)
 
 
-        self.result_img_dir = 'cut_pics/'
-        self.label_file_dir = 'labels/'
-        if not os.path.exists(self.result_img_dir):
+            self.result_img_dir = 'cut_pics_%d/' % FONT_ID
+            self.label_file_dir = 'labels/'
+            if os.path.exists(self.result_img_dir):
+                import shutil
+                shutil.rmtree(self.result_img_dir)
             os.makedirs(self.result_img_dir)
-        if not os.path.exists(self.label_file_dir):
-            os.makedirs(self.label_file_dir)
+            if not os.path.exists(self.label_file_dir):
+                os.makedirs(self.label_file_dir)
 
-        self.imnames = sorted(self.db['image'].keys())
-        N = len(self.imnames)
-        global NUM_IMG
-        if NUM_IMG < 0:
-            NUM_IMG = N
-        start_idx, end_idx = 0,min(NUM_IMG, N)
-        print start_idx, end_idx
-        img_num = end_idx - start_idx
-        thread_num = min(8,img_num)
+            self.imnames = sorted(self.db['image'].keys())
+            N = len(self.imnames)
+            global NUM_IMG
+            if NUM_IMG < 0:
+                NUM_IMG = N
+            start_idx, end_idx = 0,min(NUM_IMG, N)
+            print start_idx, end_idx
+            img_num = end_idx - start_idx
+            thread_num = min(8,img_num)
 
-        self.RV3 = RendererV3(DATA_PATH,max_time=SECS_PER_IMG)
-        self.queueLock = multiprocessing.Lock()
-        self.workQueue = multiprocessing.Queue(img_num)
-        self.threads = [multiprocessing.Process(target=self.synth_worker) for i in range(thread_num)]
-        for i in xrange(start_idx, end_idx):
-            self.queueLock.acquire()
-            self.workQueue.put(i)
-            self.queueLock.release()
+            self.RV3 = RendererV3(DATA_PATH,max_time=SECS_PER_IMG)
+            self.queueLock = multiprocessing.Lock()
+            self.workQueue = multiprocessing.Queue(img_num)
+            self.threads = [multiprocessing.Process(target=self.synth_worker) for i in range(thread_num)]
+            for i in xrange(start_idx, end_idx):
+                self.queueLock.acquire()
+                self.workQueue.put(i)
+                self.queueLock.release()
 
-        for thread in self.threads:
-            thread.daemon = True
-            thread.start()
-        while not self.workQueue.empty():
-            pass
-        for t in self.threads:
-            t.join(timeout=None)
-        self.out_db.close()
-        self.db.close()
+            for thread in self.threads:
+                thread.daemon = True
+                thread.start()
+            while not self.workQueue.empty():
+                pass
+            for t in self.threads:
+                t.join(timeout=None)
+            self.out_db.close()
+            self.db.close()
 
     def do_synth(self, i):
         imname = self.imnames[i]
