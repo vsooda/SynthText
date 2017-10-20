@@ -39,6 +39,7 @@ DB_FNAME = osp.join(bg_data,'dset.h5')
 # url of the data (google-drive public file):
 DATA_URL = 'http://www.robots.ox.ac.uk/~ankush/data.tar.gz'
 OUT_FILE = 'results/SynthText.h5'
+batch_num = 2
 
 def get_data():
   """
@@ -125,7 +126,7 @@ def save_cut_pics(imgname, res, result_img_dir, label_file_dir):
                     righty = int(round(height))
 
                 box = (leftx, lefty, rightx, righty)
-                save_index = '%s_%07d.jpg' % (basename, count)
+                save_index = '%s_%02d_%07d.jpg' % (basename, batch_num, count)
                 region = image.crop(box)
                 region.save(result_img_dir + save_index)
 
@@ -196,8 +197,8 @@ class Synthesizer(object):
 
     def synth_data(self):
         self.db = h5py.File(DB_FNAME,'r')
-        self.out_db = h5py.File(OUT_FILE,'w')
-        self.out_db.create_group('/data')
+        #self.out_db = h5py.File(OUT_FILE,'w')
+        #self.out_db.create_group('/data')
         print colorize(Color.GREEN,'Storing the output in: '+OUT_FILE, bold=True)
 
 
@@ -209,6 +210,7 @@ class Synthesizer(object):
             os.makedirs(self.label_file_dir)
 
         self.imnames = sorted(self.db['image'].keys())
+        self.db.close()
         N = len(self.imnames)
         global NUM_IMG
         if NUM_IMG < 0:
@@ -234,8 +236,7 @@ class Synthesizer(object):
             pass
         for t in self.threads:
             t.join(timeout=None)
-        self.out_db.close()
-        self.db.close()
+        #self.out_db.close()
 
     def do_synth(self, i):
         imname = self.imnames[i]

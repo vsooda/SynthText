@@ -537,6 +537,8 @@ class TextSource(object):
                 for l in lines:
                     try:
                         line=l.decode('utf-8').strip()
+                        if len(line) > 8:
+                            continue
                         for w in line:
                             index = self.dict[w]
                         self.txt.append(line)

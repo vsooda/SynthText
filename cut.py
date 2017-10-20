@@ -11,7 +11,8 @@ db_fname = 'results/SynthText.h5'
 db = h5py.File(db_fname, 'r')
 dsets = sorted(db['data'].keys())
 count = 0
-result_img_dir = 'cut_pics/'
+batch = 1
+result_img_dir = 'pics/'
 print "total number of images : ", colorize(Color.RED, len(dsets), highlight=True)
 
 if not os.path.exists(result_img_dir):
@@ -93,7 +94,7 @@ with codecs.open('result.csv', 'w', encoding='utf-8') as csv:
 
             box = (leftx, lefty, rightx, righty)
 
-            save_index = '%07d.jpg' % count
+            save_index = '%02d_%07d.jpg' % (batch,count)
             print 'result12 ' + str(leftx) + ', ' + str(lefty) + ', ' + str(rightx) + ', ' + str(righty)
             region = image.crop(box)
             region.save(result_img_dir + save_index)
