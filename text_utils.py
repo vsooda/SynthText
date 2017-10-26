@@ -16,8 +16,16 @@ import keys
 #import Image
 from PIL import Image
 import math
+import traceback, itertools
 from common import *
 
+
+def is_chinese(ch):
+    #uc=ch.decode('utf-8')
+    if u'\u4e00' <= ch<=u'\u9fff':
+        return True
+    else:
+        return False
 
 def sample_weighted(p_dict):
     ps = p_dict.keys()
@@ -86,12 +94,12 @@ class RenderFont(object):
         # distribution over the type of text:
         # whether to get a single word, paragraph or a line:
         self.p_text = {0.0 : 'WORD',
-                       0.0 : 'LINE',
-                       1.0 : 'PARA'}
+                       1.0 : 'LINE',
+                       0.0 : 'PARA'}
 
         ## TEXT PLACEMENT PARAMETERS:
         self.f_shrink = 0.90
-        self.max_shrink_trials = 5 # 0.9^5 ~= 0.6
+        self.max_shrink_trials = 3 # 0.9^5 ~= 0.6
         # the minimum number of characters that should fit in a mask
         # to define the maximum font height.
         self.min_nchar = 2
@@ -105,7 +113,9 @@ class RenderFont(object):
 
         # text-source : gets english text:
         #text_source_dir = osp.join(data_dir, 'newsgroup/data')
-        text_source_dir = "/home/sooda/data/ocr/text/"
+        #text_source_dir = "/home/sooda/data/ocr/text/"
+        #text_source_dir = "/home/sooda/deep/ocr/SynthText/data/en/"
+        text_source_dir = "/home/sooda/deep/ocr/SynthText/data/zh/"
         self.text_source = TextSource(min_nchar=self.min_nchar,fn=text_source_dir)
 
         # get font-state object:
@@ -330,8 +340,8 @@ class RenderFont(object):
         in the mask -- 255 for unsafe, 0 for safe.
         The text is rendered using FONT, the text content is TEXT.
         """
-        #H,W = mask.shape
-        H,W = self.robust_HW(mask)
+        H,W = mask.shape
+        #H,W = self.robust_HW(mask)
         f_asp = self.font_state.get_aspect_ratio(font)
 
         # find the maximum height in pixels:
@@ -387,11 +397,54 @@ class RenderFont(object):
                 return text_mask,loc[0],bb[0],text
         return #None
 
+    def render_plate(self, font, mask):
+        H, W = mask.shape
+        # H,W = self.robust_HW(mask)
+        f_asp = self.font_state.get_aspect_ratio(font)
+
+        # find the maximum height in pixels:
+        max_font_h = min(0.9 * H, (1 / f_asp) * W / (self.min_nchar + 1))
+        max_font_h = min(max_font_h, self.max_font_h)
+        if max_font_h < self.min_font_h:  # not possible to place any text here
+            return  # None
+
+        i = 0
+        f_h_px = self.sample_font_height_px(self.min_font_h, max_font_h)
+        f_h = self.font_state.get_font_size(font, f_h_px)
+
+        max_font_h = f_h_px
+        i += 1
+
+        font.size = f_h  # set the font-size
+
+        nline, nchar = self.get_nline_nchar(mask.shape[:2], f_h, f_h * f_asp)
+
+        #nline = 1
+
+        assert nline >= 1 and nchar >= self.min_nchar
+
+        # sample text:
+        text_type = sample_weighted(self.p_text)
+        text = self.text_source.sample(nline, nchar, text_type)
+        if len(text) == 0 or np.any([len(line) == 0 for line in text]):
+            return None
+
+        # render the text:
+        txt_arr, txt, bb = self.render_curved(font, text)
+        bb = self.bb_xywh2coords(bb)
+
+        if np.any(np.r_[txt_arr.shape[:2]] > np.r_[mask.shape[:2]]):
+            return None
+
+        text_mask, loc, bb, _ = self.place_text([txt_arr], mask, [bb])
+        if len(loc) > 0:  # successful in placing the text collision-free:
+            return text_mask, loc[0], bb[0], text
+
 
     def visualize_bb(self, text_arr, bbs):
         ta = text_arr.copy()
         for r in bbs:
-            cv.rectangle(ta, (r[0],r[1]), (r[0]+r[2],r[1]+r[3]), color=128, thickness=1)
+            cv2.rectangle(ta, (r[0],r[1]), (r[0]+r[2],r[1]+r[3]), color=128, thickness=1)
         plt.imshow(ta,cmap='gray')
         plt.show()
 
@@ -521,6 +574,7 @@ class TextSource(object):
                       'LINE':self.sample_line,
                       'PARA':self.sample_para}
 
+        print fn
         files= os.listdir(fn)
         files=files[0:-1]
         #print files
@@ -537,13 +591,15 @@ class TextSource(object):
                 for l in lines:
                     try:
                         line=l.decode('utf-8').strip()
+                        if len(line) > 8:
+                            continue
                         for w in line:
                             index = self.dict[w]
                         self.txt.append(line)
                     except:
-                        os.remove(filename)
-                        print "remove ", filename
-                        break
+                        #os.remove(filename)
+                        #print "remove ", filename
+                        continue
 
         random.shuffle(self.txt)
 
@@ -562,7 +618,14 @@ class TextSource(object):
         T/F return : T iff fraction of symbol/special-charcters in
                      txt is less than or equal to f (default=0.25).
         """
-        return np.sum([not ch.isalnum() for ch in txt])/(len(txt)+0.0) <= f
+        chcnt=0
+        line=txt#.decode('utf-8')
+        for ch in line:
+            if ch.isalnum() or is_chinese(ch):
+                chcnt+=1
+        print line, chcnt, len(txt)
+        return float(chcnt)/(len(txt)+0.0)>f
+        #return np.sum([not ch.isalnum() for ch in txt])/(len(txt)+0.0) <= f
 
     def is_good(self, txt, f=0.35):
         """
@@ -579,7 +642,7 @@ class TextSource(object):
             chs = [ch in char_ex for ch in l]
             return not np.all(chs)
 
-        return [ (len(l)> self.min_nchar) for l in txt ]
+        return [ (len(l)> self.min_nchar and self.check_symb_frac(l,f)) for l in txt ]
 
     def center_align(self, lines):
         """
@@ -686,3 +749,201 @@ class TextSource(object):
             return '\n'.join(lines)
         else:
             return []
+
+def r(val):
+    return int(np.random.random() * val)
+
+def rotateBB(bbs, H, offset=None):
+    """
+    Apply homography transform to bounding-boxes.
+    BBS: 2 x 4 x n matrix  (2 coordinates, 4 points, n bbs).
+    Returns the transformed 2x4xn bb-array.
+
+    offset : a 2-tuple (dx,dy), added to points before transfomation.
+    """
+    eps = 1e-16
+    # check the shape of the BB array:
+    t,f,n = bbs.shape
+    assert (t==2) and (f==4)
+
+    # append 1 for homogenous coordinates:
+    bbs_h = np.reshape(np.r_[bbs, np.ones((1,4,n))], (3,4*n), order='F')
+    if offset != None:
+        bbs_h[:2,:] += np.array(offset)[:,None]
+
+    # perpective:
+    bbs_h = H.dot(bbs_h)
+    bbs_h /= (bbs_h[2,:]+eps)
+
+    bbs_h = np.reshape(bbs_h, (3,4,n), order='F')
+    return bbs_h[:2,:,:]
+
+def rot(img, angel, shape, bbs, max_angel):
+    """ 使图像轻微的畸变
+        img 输入图像
+        factor 畸变的参数
+        size 为图片的目标尺寸
+    """
+    size_o = [shape[1], shape[0]]
+    # print size_o
+    # size = (shape[1]+ int(shape[0]*cos((float(max_angel )/180) * 3.14)),shape[0])
+    # print size
+    size = (shape[1] + int(shape[0] * math.sin((float(max_angel) / 180) * 3.14)), shape[0])
+    # print size
+    interval = abs(int(math.sin((float(angel) / 180) * 3.14) * shape[0]));
+
+    pts1 = np.float32([[0, 0], [0, size_o[1]], [size_o[0], 0], [size_o[0], size_o[1]]])
+    if (angel > 0):
+        pts2 = np.float32([[interval, 0], [0, size[1]], [size[0], 0], [size[0] - interval, size_o[1]]])
+    else:
+        pts2 = np.float32([[0, 0], [interval, size[1]], [size[0] - interval, 0], [size[0], size_o[1]]])
+
+    M = cv2.getPerspectiveTransform(pts1, pts2)
+    dst = cv2.warpPerspective(img, M, size)
+    bbs = rotateBB(bbs, M)
+    return dst, bbs
+
+def roll(img, factor, size, bbs):
+    shape = size;
+    pts1 = np.float32([[0, 0], [0, shape[0]], [shape[1], 0], [shape[1], shape[0]]])
+    pts2 = np.float32([[r(factor), r(factor)],
+                        [ r(factor), shape[0] - r(factor)],
+                        [shape[1] - r(factor), r(factor)],
+                        [shape[1] - r(factor), shape[0] - r(factor)]])
+    M = cv2.getPerspectiveTransform(pts1, pts2)
+    dst = cv2.warpPerspective(img, M, size)
+    bbs = rotateBB(bbs, M)
+    return dst, bbs
+
+def bbs_to_rects(bbs):
+    rects = []
+    for i in xrange(bbs.shape[2]):
+        bb = bbs[:, :, i]
+        left = int(bb[0,0])
+        right = int(bb[0,1])
+        top = int(bb[1,0])
+        bottom = int(bb[1,3])
+        #cv2.rectangle(dst, (left,top), (right,bottom), (255,0,0))
+        rect = (left, top, right, bottom)
+        rects.append(rect)
+        print left, top, right, bottom
+    return rects
+
+def charrects_to_wordrect(rects):
+    print len(rects)
+    xmin = 10000
+    ymin = 10000
+    xmax = -1
+    ymax = -1
+    for left, top, right, bottom in rects:
+        if left < xmin:
+            xmin = left
+        if top < ymin:
+            ymin = top
+        if right > xmax:
+            xmax = right
+        if bottom > ymax:
+            ymax = bottom
+    return (xmin, ymin, xmax, ymax)
+
+def char2wordBB(charBB, text):
+    """
+    Converts character bounding-boxes to word-level
+    bounding-boxes.
+
+    charBB : 2x4xn matrix of BB coordinates
+    text   : the text string
+
+    output : 2x4xm matrix of BB coordinates,
+             where, m == number of words.
+    """
+    wrds = text.split()
+    bb_idx = np.r_[0, np.cumsum([len(w) for w in wrds])]
+    wordBB = np.zeros((2,4,len(wrds)), 'float32')
+
+    for i in xrange(len(wrds)):
+        cc = charBB[:,:,bb_idx[i]:bb_idx[i+1]]
+
+        # fit a rotated-rectangle:
+        # change shape from 2x4xn_i -> (4*n_i)x2
+        cc = np.squeeze(np.concatenate(np.dsplit(cc,cc.shape[-1]),axis=1)).T.astype('float32')
+        rect = cv2.minAreaRect(cc.copy())
+        box = np.array(cv2.boxPoints(rect))
+
+        # find the permutation of box-coordinates which
+        # are "aligned" appropriately with the character-bb.
+        # (exhaustive search over all possible assignments):
+        cc_tblr = np.c_[cc[0,:],
+                        cc[-3,:],
+                        cc[-2,:],
+                        cc[3,:]].T
+        perm4 = np.array(list(itertools.permutations(np.arange(4))))
+        dists = []
+        for pidx in xrange(perm4.shape[0]):
+            d = np.sum(np.linalg.norm(box[perm4[pidx],:]-cc_tblr,axis=1))
+            dists.append(d)
+        wordBB[:,:,i] = box[perm4[np.argmin(dists)],:].T
+
+    return wordBB
+
+
+if __name__ == '__main__':
+    text_render = RenderFont()
+    img_name = '1.bmp'
+    img = cv2.imread(img_name)
+    font = text_render.font_state.sample()
+    font = text_render.font_state.init_font(font)
+    mask = np.zeros(img.shape[:2], dtype=np.uint8)
+    print mask.shape
+    mask[:,:] = 255
+    mask = mask.astype('float') / 255
+    # cv2.imshow('orig', img)
+    # cv2.imshow('mask', mask)
+    # cv2.waitKey()
+    # text_mask_orig = text_mask.copy()
+    # bb_orig = bb.copy()
+    # text_mask = self.warpHomography(text_mask, H, rgb.shape[:2][::-1])
+    # bb = self.homographyBB(bb, Hinv)
+
+    text_mask, loc, bbs, text = text_render.render_plate(font, mask)
+    print bbs.shape
+    print loc.shape
+    print loc
+    #cv2.rectangle(text_mask, bb)
+    img_32f = img.astype('float')/255
+    text_mask = text_mask.astype('float')/255
+    text_mask_3 = np.zeros(img.shape[:], dtype=np.float32)
+    text_mask_3[:,:,0] = text_mask
+    text_mask_3[:,:,1] = text_mask
+    text_mask_3[:,:,2] = text_mask
+    color_mat = np.zeros(img.shape[:], dtype=np.float32)
+    color_mat[:,:,2] = 1.0
+    dst = img_32f * (1-text_mask_3) + color_mat * text_mask_3
+    cv2.imshow('orig', img)
+    dst = (dst * 255).astype('uint8')
+
+    ibb = [bbs]
+    charbbs =  np.concatenate(ibb, axis=2)
+    wordbbs = char2wordBB(charbbs, text)
+
+    rects = bbs_to_rects(wordbbs)
+    #xmin, ymin, xmax, ymax = charrects_to_wordrect(rects)
+    for xmin, ymin, xmax, ymax in rects:
+        cv2.rectangle(dst, (xmin, ymin), (xmax, ymax), (255, 0, 255))
+
+    rotation_dst, wordbbs = rot(dst, r(40) - 20, dst.shape, wordbbs, 20)
+    rotation_dst, wordbbs = roll(rotation_dst, 30, (rotation_dst.shape[1], rotation_dst.shape[0]), wordbbs)
+
+    rects = bbs_to_rects(wordbbs)
+    for xmin, ymin, xmax, ymax in rects:
+        cv2.rectangle(rotation_dst, (xmin, ymin), (xmax, ymax), (255, 255, 255))
+
+    #rects = bbs_to_rects(bbs)
+    #xmin, ymin, xmax, ymax = charrects_to_wordrect(rects)
+    #cv2.rectangle(rotation_dst, (xmin, ymin), (xmax, ymax), (255, 255, 255))
+
+    cv2.imshow('uint', dst)
+    cv2.imshow('dst_rot', rotation_dst)
+    cv2.waitKey()
+
+    print 'ok'
