@@ -156,7 +156,6 @@ if __name__ == '__main__':
         dst = (dst * 255).astype('uint8')
         ibb = [bbs]
         charbbs =  np.concatenate(ibb, axis=2)
-        wordbbs = char2wordBB(charbbs, text_pack)
 
         #xmin, ymin, xmax, ymax = charrects_to_wordrect(rects)
         if verbose:
@@ -164,8 +163,9 @@ if __name__ == '__main__':
             for xmin, ymin, xmax, ymax in rects:
                 cv2.rectangle(dst, (xmin, ymin), (xmax, ymax), (255, 0, 255))
 
-        rotation_dst, wordbbs = rot(dst, r(20) - 10, dst.shape, wordbbs, 20)
-        rotation_dst, wordbbs = roll(rotation_dst, 30, (rotation_dst.shape[1], rotation_dst.shape[0]), wordbbs)
+        rotation_dst, charbbs = rot(dst, r(20) - 10, dst.shape, charbbs, 20)
+        rotation_dst, charbbs = roll(rotation_dst, 30, (rotation_dst.shape[1], rotation_dst.shape[0]), charbbs)
+        wordbbs = char2wordBB(charbbs, text_pack)
 
         rects = bbs_to_rects(wordbbs)
         if verbose:
