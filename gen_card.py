@@ -86,10 +86,10 @@ def char2wordBB(charBB, text):
 
     return wordBB
 
-def do_crop(img, rects, texts, base_name, crop_path, label_path):
+def do_crop(img, rects, texts, base_name, crop_path, label_name):
     assert len(texts) == len(rects)
     index = 0
-    label_name = label_path + base_name + '.txt'
+    #label_name = label_path + base_name + '.txt'
     with codecs.open(label_name, 'a', encoding='utf-8') as f:
         for left, top, right, bottom in rects:
             w_margin = int((right - left) / 20)
@@ -108,17 +108,20 @@ class Synthesizer(object):
         self.workQueue = None
 
     def synth_worker(self):
+        text_render = RenderFont()
+        hash = random.getrandbits(128)
+        label_name = '%s/%s.txt' % (self.label_path, hash)
         while True:
             self.queueLock.acquire()
             if not self.workQueue.empty():
                 index = self.workQueue.get()
                 self.queueLock.release()
-                self.do_synth(index)
+                self.do_synth(index, text_render, label_name)
             else:
                 self.queueLock.release()
                 break
 
-    def do_synth(self, index):
+    def do_synth(self, index, text_render, label_name):
         print index
         #try:
         img = self.img
@@ -126,9 +129,9 @@ class Synthesizer(object):
         smu = self.smu
         color_mat = self.color_mat
         verbose = self.verbose
-        font = self.text_render.font_state.sample()
-        font = self.text_render.font_state.init_font(font)
-        text_mask, loc, bbs, text_pack = self.text_render.render_plate(font, mask)
+        font = text_render.font_state.sample()
+        font = text_render.font_state.init_font(font)
+        text_mask, loc, bbs, text_pack = text_render.render_plate(font, mask)
         if text_mask is None:
             return
         texts = text_pack.split()
@@ -166,7 +169,7 @@ class Synthesizer(object):
         rotation_dst = AddSmudginess(rotation_dst, smu)
         rotation_dst = AddGauss(rotation_dst, 1 + r(2))
         rotation_dst = addNoise(rotation_dst)
-        do_crop(rotation_dst, rects, texts, base_name, self.crop_path, self.label_path)
+        do_crop(rotation_dst, rects, texts, base_name, self.crop_path, label_name)
 
         if verbose:
             cv2.imshow('uint', dst)
@@ -176,7 +179,6 @@ class Synthesizer(object):
         #     print '>>>>>>continue'
 
     def synth_data(self):
-        self.text_render = RenderFont()
         img_name = 'template/template.jpg'
         smu_name = 'template/smu2.jpg'
         self.img = cv2.imread(img_name)
