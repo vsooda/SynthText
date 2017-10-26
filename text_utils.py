@@ -115,7 +115,8 @@ class RenderFont(object):
         #text_source_dir = osp.join(data_dir, 'newsgroup/data')
         #text_source_dir = "/home/sooda/data/ocr/text/"
         #text_source_dir = "/home/sooda/deep/ocr/SynthText/data/en/"
-        text_source_dir = "/home/sooda/deep/ocr/SynthText/data/zh/"
+        #text_source_dir = "/home/sooda/deep/ocr/SynthText/data/zh/"
+        text_source_dir = "/home/sooda/data/ocr/mix_text/"
         self.text_source = TextSource(min_nchar=self.min_nchar,fn=text_source_dir)
 
         # get font-state object:
@@ -406,7 +407,7 @@ class RenderFont(object):
         max_font_h = min(0.9 * H, (1 / f_asp) * W / (self.min_nchar + 1))
         max_font_h = min(max_font_h, self.max_font_h)
         if max_font_h < self.min_font_h:  # not possible to place any text here
-            return  # None
+            return None, None, None, None
 
         i = 0
         f_h_px = self.sample_font_height_px(self.min_font_h, max_font_h)
@@ -427,14 +428,14 @@ class RenderFont(object):
         text_type = sample_weighted(self.p_text)
         text = self.text_source.sample(nline, nchar, text_type)
         if len(text) == 0 or np.any([len(line) == 0 for line in text]):
-            return None
+            return None, None, None, None
 
         # render the text:
         txt_arr, txt, bb = self.render_curved(font, text)
         bb = self.bb_xywh2coords(bb)
 
         if np.any(np.r_[txt_arr.shape[:2]] > np.r_[mask.shape[:2]]):
-            return None
+            return None, None, None, None
 
         text_mask, loc, bb, _ = self.place_text([txt_arr], mask, [bb])
         if len(loc) > 0:  # successful in placing the text collision-free:
@@ -576,7 +577,7 @@ class TextSource(object):
 
         print fn
         files= os.listdir(fn)
-        files=files[0:-1]
+        #files=files[0:-1]
         #print files
         random.shuffle(files)
         self.txt = []

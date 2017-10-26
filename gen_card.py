@@ -90,7 +90,9 @@ def do_crop(img, rects, texts, base_name, word_path, word_label):
     index = 0
     with codecs.open(word_label, 'a', encoding='utf-8') as f:
         for left, top, right, bottom in rects:
-            text_region = img[top:bottom, left:right]
+            w_margin = int((right - left) / 20)
+            h_margin = int((bottom - top) / 10)
+            text_region = img[top-h_margin:bottom+h_margin, left-w_margin:right+w_margin]
             save_name = "%s_%02d.jpg" % (base_name, index)
             cv2.imwrite(word_path+save_name, text_region)
             f.write('%s %s\n' % (save_name, texts[index]))
@@ -102,6 +104,7 @@ if __name__ == '__main__':
     img_name = 'template/template.jpg'
     smu_name = 'template/smu2.jpg'
     img = cv2.imread(img_name)
+    img_32f = img.astype('float')/255
     smu = cv2.imread(smu_name)
     mask = np.zeros(img.shape[:2], dtype=np.uint8)
     print mask.shape
@@ -135,55 +138,59 @@ if __name__ == '__main__':
             os.remove(word_label)
 
     index = 0
-    max_num = 10
+    max_num = 1000000
     while index < max_num:
         print index
-        font = text_render.font_state.sample()
-        font = text_render.font_state.init_font(font)
-        text_mask, loc, bbs, text_pack = text_render.render_plate(font, mask)
-        if text_mask is None:
-            continue
-        texts = text_pack.split()
-        #cv2.rectangle(text_mask, bb)
-        img_32f = img.astype('float')/255
-        text_mask = text_mask.astype('float')/255
-        text_mask_3 = np.zeros(img.shape[:], dtype=np.float32)
-        text_mask_3[:,:,0] = text_mask
-        text_mask_3[:,:,1] = text_mask
-        text_mask_3[:,:,2] = text_mask
-        dst = img_32f * (1-text_mask_3) + color_mat * text_mask_3
-        #cv2.imshow('orig', img)
-        dst = (dst * 255).astype('uint8')
-        ibb = [bbs]
-        charbbs =  np.concatenate(ibb, axis=2)
+        try:
+            font = text_render.font_state.sample()
+            font = text_render.font_state.init_font(font)
+            text_mask, loc, bbs, text_pack = text_render.render_plate(font, mask)
+            if text_mask is None:
+                continue
+            texts = text_pack.split()
+            #cv2.rectangle(text_mask, bb)
+            text_mask = text_mask.astype('float')/255
+            text_mask_3 = np.zeros(img.shape[:], dtype=np.float32)
+            text_mask_3[:,:,0] = text_mask
+            text_mask_3[:,:,1] = text_mask
+            text_mask_3[:,:,2] = text_mask
+            dst = img_32f * (1-text_mask_3) + color_mat * text_mask_3
+            #cv2.imshow('orig', img)
+            dst = (dst * 255).astype('uint8')
+            ibb = [bbs]
+            charbbs =  np.concatenate(ibb, axis=2)
 
-        #xmin, ymin, xmax, ymax = charrects_to_wordrect(rects)
-        if verbose:
+            #xmin, ymin, xmax, ymax = charrects_to_wordrect(rects)
+            if verbose:
+                rects = bbs_to_rects(wordbbs)
+                for xmin, ymin, xmax, ymax in rects:
+                    cv2.rectangle(dst, (xmin, ymin), (xmax, ymax), (255, 0, 255))
+
+            rotation_dst, charbbs = rot(dst, r(20) - 10, dst.shape, charbbs, 20)
+            rotation_dst, charbbs = roll(rotation_dst, 30, (rotation_dst.shape[1], rotation_dst.shape[0]), charbbs)
+            wordbbs = char2wordBB(charbbs, text_pack)
+
             rects = bbs_to_rects(wordbbs)
-            for xmin, ymin, xmax, ymax in rects:
-                cv2.rectangle(dst, (xmin, ymin), (xmax, ymax), (255, 0, 255))
+            if verbose:
+                for xmin, ymin, xmax, ymax in rects:
+                    cv2.rectangle(rotation_dst, (xmin, ymin), (xmax, ymax), (255, 255, 255))
 
-        rotation_dst, charbbs = rot(dst, r(20) - 10, dst.shape, charbbs, 20)
-        rotation_dst, charbbs = roll(rotation_dst, 30, (rotation_dst.shape[1], rotation_dst.shape[0]), charbbs)
-        wordbbs = char2wordBB(charbbs, text_pack)
-
-        rects = bbs_to_rects(wordbbs)
-        if verbose:
-            for xmin, ymin, xmax, ymax in rects:
-                cv2.rectangle(rotation_dst, (xmin, ymin), (xmax, ymax), (255, 255, 255))
-
-        #rects = bbs_to_rects(bbs)
-        #xmin, ymin, xmax, ymax = charrects_to_wordrect(rects)
-        #cv2.rectangle(rotation_dst, (xmin, ymin), (xmax, ymax), (255, 255, 255))
-        base_name = 'card_%07d' % index
-        rotation_dst = AddSmudginess(rotation_dst, smu)
-        rotation_dst = AddGauss(rotation_dst, 1 + r(2))
-        rotation_dst = addNoise(rotation_dst)
-        do_crop(rotation_dst, rects, texts, base_name, word_path, word_label)
+            #rects = bbs_to_rects(bbs)
+            #xmin, ymin, xmax, ymax = charrects_to_wordrect(rects)
+            #cv2.rectangle(rotation_dst, (xmin, ymin), (xmax, ymax), (255, 255, 255))
+            base_name = 'card_%07d' % index
+            rotation_dst = AddSmudginess(rotation_dst, smu)
+            rotation_dst = AddGauss(rotation_dst, 1 + r(2))
+            rotation_dst = addNoise(rotation_dst)
+            do_crop(rotation_dst, rects, texts, base_name, word_path, word_label)
 
 
-        if verbose:
-            cv2.imshow('uint', dst)
-            cv2.imshow('dst_rot', rotation_dst)
-            cv2.waitKey()
-        index = index + 1
+            if verbose:
+                cv2.imshow('uint', dst)
+                cv2.imshow('dst_rot', rotation_dst)
+                cv2.waitKey()
+            index = index + 1
+        except:
+            print '>>>>>>continue'
+
+
