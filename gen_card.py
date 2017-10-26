@@ -13,6 +13,7 @@ import math
 import traceback, itertools
 from card_commom import *
 from text_utils import RenderFont
+import multiprocessing
 
 
 def bbs_to_rects(bbs):
@@ -85,112 +86,152 @@ def char2wordBB(charBB, text):
 
     return wordBB
 
-def do_crop(img, rects, texts, base_name, word_path, word_label):
+def do_crop(img, rects, texts, base_name, crop_path, label_path):
     assert len(texts) == len(rects)
     index = 0
-    with codecs.open(word_label, 'a', encoding='utf-8') as f:
+    label_name = label_path + base_name + '.txt'
+    with codecs.open(label_name, 'a', encoding='utf-8') as f:
         for left, top, right, bottom in rects:
             w_margin = int((right - left) / 20)
             h_margin = int((bottom - top) / 10)
             text_region = img[top-h_margin:bottom+h_margin, left-w_margin:right+w_margin]
             save_name = "%s_%02d.jpg" % (base_name, index)
-            cv2.imwrite(word_path+save_name, text_region)
+            cv2.imwrite(crop_path+save_name, text_region)
             f.write('%s %s\n' % (save_name, texts[index]))
             index = index + 1
 
 
-if __name__ == '__main__':
-    text_render = RenderFont()
-    img_name = 'template/template.jpg'
-    smu_name = 'template/smu2.jpg'
-    img = cv2.imread(img_name)
-    img_32f = img.astype('float')/255
-    smu = cv2.imread(smu_name)
-    mask = np.zeros(img.shape[:2], dtype=np.uint8)
-    print mask.shape
-    h = img.shape[0]
-    w = img.shape[1]
-    margin_ratio = 8.0
-    h_margin = int(h / margin_ratio)
-    w_margin = int(w / margin_ratio)
-    mask[h_margin:h-h_margin,w_margin:w-w_margin] = 255
-    mask = mask.astype('float') / 255
-    # cv2.imshow('orig', img)
-    # cv2.imshow('mask', mask)
-    # cv2.waitKey()
-    # text_mask_orig = text_mask.copy()
-    # bb_orig = bb.copy()
-    # text_mask = self.warpHomography(text_mask, H, rgb.shape[:2][::-1])
-    # bb = self.homographyBB(bb, Hinv)
-    verbose = False
 
+class Synthesizer(object):
+    def __init__(self):
+        self.queueLock = None
+        self.workQueue = None
 
-    color_mat = np.zeros(img.shape[:], dtype=np.float32)
-    color_mat[:,:,2] = 1.0
-    word_label = 'word.txt'
-    word_path = 'card/'
+    def synth_worker(self):
+        while True:
+            self.queueLock.acquire()
+            if not self.workQueue.empty():
+                index = self.workQueue.get()
+                self.queueLock.release()
+                self.do_synth(index)
+            else:
+                self.queueLock.release()
+                break
 
-    if not os.path.exists(word_path):
-        os.makedirs(word_path)
-
-    if word_path is not None:
-        if os.path.exists(word_label):
-            os.remove(word_label)
-
-    index = 0
-    max_num = 1000000
-    while index < max_num:
+    def do_synth(self, index):
         print index
-        try:
-            font = text_render.font_state.sample()
-            font = text_render.font_state.init_font(font)
-            text_mask, loc, bbs, text_pack = text_render.render_plate(font, mask)
-            if text_mask is None:
-                continue
-            texts = text_pack.split()
-            #cv2.rectangle(text_mask, bb)
-            text_mask = text_mask.astype('float')/255
-            text_mask_3 = np.zeros(img.shape[:], dtype=np.float32)
-            text_mask_3[:,:,0] = text_mask
-            text_mask_3[:,:,1] = text_mask
-            text_mask_3[:,:,2] = text_mask
-            dst = img_32f * (1-text_mask_3) + color_mat * text_mask_3
-            #cv2.imshow('orig', img)
-            dst = (dst * 255).astype('uint8')
-            ibb = [bbs]
-            charbbs =  np.concatenate(ibb, axis=2)
+        #try:
+        img = self.img
+        mask = self.mask
+        smu = self.smu
+        color_mat = self.color_mat
+        verbose = self.verbose
+        font = self.text_render.font_state.sample()
+        font = self.text_render.font_state.init_font(font)
+        text_mask, loc, bbs, text_pack = self.text_render.render_plate(font, mask)
+        if text_mask is None:
+            return
+        texts = text_pack.split()
+        # cv2.rectangle(text_mask, bb)
+        text_mask = text_mask.astype('float') / 255
+        text_mask_3 = np.zeros(img.shape[:], dtype=np.float32)
+        text_mask_3[:, :, 0] = text_mask
+        text_mask_3[:, :, 1] = text_mask
+        text_mask_3[:, :, 2] = text_mask
+        dst = self.img_32f * (1 - text_mask_3) + color_mat * text_mask_3
+        # cv2.imshow('orig', img)
+        dst = (dst * 255).astype('uint8')
+        ibb = [bbs]
+        charbbs = np.concatenate(ibb, axis=2)
 
-            #xmin, ymin, xmax, ymax = charrects_to_wordrect(rects)
-            if verbose:
-                rects = bbs_to_rects(wordbbs)
-                for xmin, ymin, xmax, ymax in rects:
-                    cv2.rectangle(dst, (xmin, ymin), (xmax, ymax), (255, 0, 255))
+        # xmin, ymin, xmax, ymax = charrects_to_wordrect(rects)
+        if self.verbose:
+            rects = bbs_to_rects(charbbs)
+            for xmin, ymin, xmax, ymax in rects:
+                cv2.rectangle(dst, (xmin, ymin), (xmax, ymax), (255, 0, 255))
 
-            rotation_dst, charbbs = rot(dst, r(20) - 10, dst.shape, charbbs, 20)
-            rotation_dst, charbbs = roll(rotation_dst, 30, (rotation_dst.shape[1], rotation_dst.shape[0]), charbbs)
-            wordbbs = char2wordBB(charbbs, text_pack)
+        rotation_dst, charbbs = rot(dst, r(20) - 10, dst.shape, charbbs, 20)
+        rotation_dst, charbbs = roll(rotation_dst, 30, (rotation_dst.shape[1], rotation_dst.shape[0]), charbbs)
+        wordbbs = char2wordBB(charbbs, text_pack)
 
-            rects = bbs_to_rects(wordbbs)
-            if verbose:
-                for xmin, ymin, xmax, ymax in rects:
-                    cv2.rectangle(rotation_dst, (xmin, ymin), (xmax, ymax), (255, 255, 255))
+        rects = bbs_to_rects(wordbbs)
+        if verbose:
+            for xmin, ymin, xmax, ymax in rects:
+                cv2.rectangle(rotation_dst, (xmin, ymin), (xmax, ymax), (255, 255, 255))
 
-            #rects = bbs_to_rects(bbs)
-            #xmin, ymin, xmax, ymax = charrects_to_wordrect(rects)
-            #cv2.rectangle(rotation_dst, (xmin, ymin), (xmax, ymax), (255, 255, 255))
-            base_name = 'card_%07d' % index
-            rotation_dst = AddSmudginess(rotation_dst, smu)
-            rotation_dst = AddGauss(rotation_dst, 1 + r(2))
-            rotation_dst = addNoise(rotation_dst)
-            do_crop(rotation_dst, rects, texts, base_name, word_path, word_label)
+        # rects = bbs_to_rects(bbs)
+        # xmin, ymin, xmax, ymax = charrects_to_wordrect(rects)
+        # cv2.rectangle(rotation_dst, (xmin, ymin), (xmax, ymax), (255, 255, 255))
+        base_name = 'card_%07d' % index
+        rotation_dst = AddSmudginess(rotation_dst, smu)
+        rotation_dst = AddGauss(rotation_dst, 1 + r(2))
+        rotation_dst = addNoise(rotation_dst)
+        do_crop(rotation_dst, rects, texts, base_name, self.crop_path, self.label_path)
+
+        if verbose:
+            cv2.imshow('uint', dst)
+            cv2.imshow('dst_rot', rotation_dst)
+            cv2.waitKey()
+        # except:
+        #     print '>>>>>>continue'
+
+    def synth_data(self):
+        self.text_render = RenderFont()
+        img_name = 'template/template.jpg'
+        smu_name = 'template/smu2.jpg'
+        self.img = cv2.imread(img_name)
+        self.img_32f = self.img.astype('float')/255
+        self.smu = cv2.imread(smu_name)
+        self.mask = np.zeros(self.img.shape[:2], dtype=np.uint8)
+        h = self.img.shape[0]
+        w = self.img.shape[1]
+        margin_ratio = 8.0
+        h_margin = int(h / margin_ratio)
+        w_margin = int(w / margin_ratio)
+        self.mask[h_margin:h-h_margin,w_margin:w-w_margin] = 255
+        self.mask = self.mask.astype('float') / 255
+        # cv2.imshow('orig', img)
+        # cv2.imshow('mask', mask)
+        # cv2.waitKey()
+        # text_mask_orig = text_mask.copy()
+        # bb_orig = bb.copy()
+        # text_mask = self.warpHomography(text_mask, H, rgb.shape[:2][::-1])
+        # bb = self.homographyBB(bb, Hinv)
+        self.verbose = False
 
 
-            if verbose:
-                cv2.imshow('uint', dst)
-                cv2.imshow('dst_rot', rotation_dst)
-                cv2.waitKey()
-            index = index + 1
-        except:
-            print '>>>>>>continue'
+        self.color_mat = np.zeros(self.img.shape[:], dtype=np.float32)
+        self.color_mat[:,:,2] = 1.0
+        self.label_path = 'card_labels/'
+        self.crop_path = 'card/'
 
+        if not os.path.exists(self.crop_path):
+            os.makedirs(self.crop_path)
+
+        if not os.path.exists(self.label_path):
+            os.makedirs(self.label_path)
+
+        index = 0
+        max_num = 1000
+        thread_num = 8
+        self.queueLock = multiprocessing.Lock()
+        self.workQueue = multiprocessing.Queue(max_num)
+        self.threads = [multiprocessing.Process(target=self.synth_worker) for i in range(thread_num)]
+        for i in xrange(0, max_num):
+            self.queueLock.acquire()
+            self.workQueue.put(i)
+            self.queueLock.release()
+
+        for thread in self.threads:
+            thread.daemon = True
+            thread.start()
+        while not self.workQueue.empty():
+            pass
+        for t in self.threads:
+            t.join(timeout=None)
+
+
+if __name__ == '__main__':
+    synther = Synthesizer()
+    synther.synth_data()
 
