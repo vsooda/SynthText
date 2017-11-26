@@ -105,7 +105,7 @@ class RenderFont(object):
 
         # text-source : gets english text:
         #text_source_dir = osp.join(data_dir, 'newsgroup/data')
-        text_source_dir = "/home/sooda/data/ocr/text/"
+        text_source_dir = "/home/sooda/data/ocr/mix_text/"
         self.text_source = TextSource(min_nchar=self.min_nchar,fn=text_source_dir)
 
         # get font-state object:

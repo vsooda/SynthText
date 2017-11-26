@@ -161,7 +161,108 @@ def save_cut_pics(imgname, res, result_img_dir, label_file_dir):
                     count += 1
     return count
 
+def save_pics_bboxes(imgname, res, result_img_dir, label_file_dir):
+    basename = os.path.splitext(os.path.basename(imgname))[0]
+    label_file = label_file_dir + basename + ".txt"
+    print label_file
+    count = 0
+    ninstance = len(res)
+    for k in xrange(ninstance):
+        #region.save(result_img_dir + save_index)
+        save_prefix = '%s_%03d' % (basename, k)
+        label_file = label_file_dir + save_prefix + '.txt'
+        image_file = result_img_dir + save_prefix + '.jpg'
+        m = 0
+        space = 0
+        space_count = 0
+        rgb = res[k]['img']
+        charBB = res[k]['charBB']
+        wordBB = res[k]['wordBB']
+        txt = res[k]['txt']
+        image = Image.fromarray(rgb)
+        image.save(image_file)
 
+        txt = [t.decode('utf-8').strip() for t in txt]
+        txt_len = len(txt)
+
+        with codecs.open(label_file, 'w', encoding='utf-8') as csv:
+            for i in xrange(wordBB.shape[-1]):
+                bb = wordBB[:, :, i]
+                bb = np.c_[bb, bb[:, 0]]
+
+                leftx = 1000
+                lefty = 1000
+                rightx = -1000
+                righty = -1000
+
+                for j in xrange(4):
+                    if j == 0:
+                        if bb[0, j] < leftx:
+                            leftx = int(round(bb[0, j]))
+                        if bb[1, j] < lefty:
+                            lefty = int(round(bb[1, j]))
+                    if j == 1:
+                        if bb[0, j] > rightx:
+                            rightx = int(round(bb[0, j]))
+                        if bb[1, j] < lefty:
+                            lefty = int(round(bb[1, j]))
+                    if j == 2:
+                        if bb[0, j] > rightx:
+                            rightx = int(round(bb[0, j]))
+                        if bb[1, j] > righty:
+                            righty = int(round(bb[1, j]))
+                    if j == 3:
+                        if bb[0, j] < leftx:
+                            leftx = int(round(bb[0, j]))
+                        if bb[1, j] > righty:
+                            righty = int(round(bb[1, j]))
+
+                if leftx < 0:
+                    leftx = 0
+                if lefty < 0:
+                    lefty = 0
+                width, height = image.size
+                if rightx > width:
+                    rightx = int(round(width))
+                if righty > height:
+                    righty = int(round(height))
+
+                box = (leftx, lefty, rightx, righty)
+                #save_index = '%s_%02d_%07d.jpg' % (basename, batch_num, count)
+                save_index = '%d %d %d %d' % (leftx, lefty, rightx, righty)
+                #region = image.crop(box)
+                #region.save(result_img_dir + save_index)
+
+                lines = txt[m].split('\n')
+                lines = [line.strip() for line in lines]
+                if len(lines) > 1:
+                    if space_count == 0:
+                        space = len(lines)
+                    if m < txt_len - 1:
+                        if space_count < space:
+                            csv.write('%s %s\n' % (save_index , lines[space_count]))
+                            space_count += 1
+                            count += 1
+                            if space_count == space:
+                                m += 1
+                                space_count = 0
+                    else:
+                        if space_count < space:
+                            csv.write('%s %s\n' % (save_index , lines[space_count]))
+                            space_count += 1
+                            count += 1
+                            if space_count == space:
+                                m = 0
+                                space_count = 0
+                else:
+                    if m < txt_len - 1:
+                        csv.write('%s %s\n' % (save_index, txt[m]))
+                        m += 1
+                    elif m == txt_len - 1:
+                        csv.write('%s %s\n' % (save_index, txt[m]))
+                        m = 0
+                    count += 1
+    return count
 
 def add_res_to_db(imgname,res,db):
   """
@@ -267,7 +368,8 @@ class Synthesizer(object):
             if len(res) > 0:
                 # non-empty : successful in placing text:
                 #add_res_to_db(imname, res, self.out_db)
-                save_cut_pics(imname, res, self.result_img_dir, self.label_file_dir)
+                #save_cut_pics(imname, res, self.result_img_dir, self.label_file_dir)
+                save_pics_bboxes(imname, res, self.result_img_dir, self.label_file_dir)
             else:
                 print 'not res', imname
             db.close()
